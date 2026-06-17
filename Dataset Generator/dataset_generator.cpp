@@ -1,35 +1,73 @@
-// ******
-// Program: dataset_generator.cpp
-// Course: CCP6214 Algorithm Design and Analysis
-// Lecture Class: TC4L
-// Tutorial Class: T13L
-// Trimester: 2610
-// ******
+// dataset_generator.cpp
+// CCP6214 Assignment - Dataset generator.
+//
+// Build:  g++ -O2 -std=c++17 "dataset_generator.cpp" -o dataset_generator
+// Run:    ./dataset_generator 1000        -> writes dataset_1000.csv
 //
 // Produces n rows of:  <unique random 10-digit integer>,<5 lowercase letters>
 //   - integers are UNIQUE, random, positive, in [1,000,000,000 .. 9,999,999,999]
-//   - elements are emitted in random order (shuffled before writing)
-//
-// Uniqueness is guaranteed by construction (a strictly increasing sequence),
-// so NO data structure that searches internally is used anywhere. The order is
-// then randomized with a hand-written Fisher-Yates shuffle.
+//   - elements are emitted in random order (no sorting)
 //
 // Seed: derived from the group leader's student ID 242UC244S9 using the
 // assignment's letter->digit table (U=1, C=3, S=9):
 //       2 4 2 U C 2 4 4 S 9  ->  2 4 2 1 3 2 4 4 9 9  ->  2421324499
+// The seed is set right after main() enters, per the assignment instruction.
 
 #include <iostream>
 #include <fstream>
 #include <string>
 #include <random>
+#include <vector>          // raw contiguous storage only (no sorting/searching API used)
 
-using namespace std;
+// ----------------------------------------------------------------------------
+// Hand-built open-addressing hash set (linear probing).
+//
+// The assignment forbids any standard-library container that searches/sorts
+// internally (e.g. std::unordered_set). To guarantee that the generated keys
+// are unique we therefore implement our own hash set from scratch, backed only
+// by a plain array of slots. std::vector is used purely as raw memory.
+// ----------------------------------------------------------------------------
+class UniqueKeySet {
+public:
+    explicit UniqueKeySet(long long expected) {
+        // pick a power-of-two capacity at least 2x the expected element count
+        std::size_t cap = 16;
+        while (cap < static_cast<std::size_t>(expected) * 2 + 1) cap <<= 1;
+        slots_.assign(cap, EMPTY);
+        mask_ = cap - 1;
+    }
+
+    // returns true if 'key' was newly inserted, false if it was already present
+    bool insert(long long key) {
+        std::size_t i = hash(key) & mask_;
+        while (slots_[i] != EMPTY) {
+            if (slots_[i] == key) return false;   // already present
+            i = (i + 1) & mask_;                   // linear probe
+        }
+        slots_[i] = key;
+        return true;
+    }
+
+private:
+    static constexpr long long EMPTY = -1;        // keys are always positive
+
+    static std::size_t hash(long long key) {
+        // 64-bit fibonacci-style mix
+        unsigned long long x = static_cast<unsigned long long>(key);
+        x ^= x >> 33;
+        x *= 0xff51afd7ed558ccdULL;
+        x ^= x >> 33;
+        return static_cast<std::size_t>(x);
+    }
+
+    std::vector<long long> slots_;
+    std::size_t mask_;
+};
 
 int main(int argc, char** argv) {
     // ---- Group-leader seed (student ID 242UC244S9) ----
-    std::mt19937_64 rng(2421324499ULL);
+    std::mt19937_64 rng(2421324499);
 
-    // Grab the size from the command line argument
     long long n = (argc > 1) ? std::stoll(argv[1]) : 1000;
     if (n <= 0) {
         std::cerr << "Error: size must be a positive integer.\n";
@@ -38,57 +76,36 @@ int main(int argc, char** argv) {
 
     const long long LO = 1000000000LL;   // smallest 10-digit number
     const long long HI = 9999999999LL;   // largest 10-digit number
-    const long long SPAN = HI - LO;      // 8,999,999,999 values of head-room
-    if (n > SPAN + 1) {
+    if (n > (HI - LO + 1)) {
         std::cerr << "Error: n exceeds the count of available unique 10-digit integers.\n";
         return 1;
     }
 
-    // Dynamic step: largest jump that still keeps ALL n values within
-    // [LO, HI]. Since n * maxStep <= SPAN, the final value never exceeds HI,
-    // so every integer stays exactly 10 digits. For small n the steps are
-    // large (values spread across the whole range); for large n they shrink.
-    long long maxStep = SPAN / n;
-    if (maxStep < 1) maxStep = 1;
-    std::uniform_int_distribution<long long> stepDist(1, maxStep);
-
-    // Generate sequential unique 10-digit numbers with random jumps.
-    long long* numbers = new long long[n];
-    long long current = LO;
-    for (long long i = 0; i < n; ++i) {
-        current += stepDist(rng);
-        numbers[i] = current;
-    }
-
-    // Shuffle the integers (Fisher-Yates) so they are in random order before sorting.
-    for (long long i = n - 1; i > 0; --i) {
-        std::uniform_int_distribution<long long> indexDist(0, i);
-        long long j = indexDist(rng);
-        long long temp = numbers[i];
-        numbers[i] = numbers[j];
-        numbers[j] = temp;
-    }
+    std::uniform_int_distribution<long long> keyDist(LO, HI);
+    std::uniform_int_distribution<int> letterDist(0, 25);
 
     std::string outputFile = "dataset_" + std::to_string(n) + ".csv";
     std::ofstream out(outputFile);
     if (!out) {
         std::cerr << "Error: cannot write output file '" << outputFile << "'\n";
-        delete[] numbers;
         return 1;
     }
 
-    // Generate the 5-letter lowercase strings and write to CSV.
-    std::uniform_int_distribution<int> letterDist(0, 25);
-    for (long long i = 0; i < n; ++i) {
-        std::string randomStr = "";
-        for (int c = 0; c < 5; ++c) {
-            randomStr += static_cast<char>('a' + letterDist(rng));
-        }
-        out << numbers[i] << "," << randomStr << "\n";
-    }
+    UniqueKeySet seen(n);
 
+    for (long long i = 0; i < n; ++i) {
+        long long key;
+        do {
+            key = keyDist(rng);
+        } while (!seen.insert(key));   // re-draw on collision -> uniqueness
+
+        std::string s(5, 'a');
+        for (int j = 0; j < 5; ++j)
+            s[j] = static_cast<char>('a' + letterDist(rng));
+
+        out << key << ',' << s << '\n';
+    }
     out.close();
-    delete[] numbers;
 
     std::cout << "Generated " << n << " unique rows -> " << outputFile << '\n';
     return 0;
