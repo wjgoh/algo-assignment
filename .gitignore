@@ -1,0 +1,5 @@
+# Ignore generated datasets and compiled binary, but keep the generator source
+Dataset Generator/*.csv
+Dataset Generator/dataset_generator
+.vscode
+/CLAUDE.MD
