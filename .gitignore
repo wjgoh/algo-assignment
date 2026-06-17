@@ -3,3 +3,6 @@ Dataset Generator/*.csv
 Dataset Generator/dataset_generator
 .vscode
 /CLAUDE.MD
+*.exe
+radix-sort/*.csv
+radix-sort/*.txt
