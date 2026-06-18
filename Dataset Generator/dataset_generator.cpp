@@ -1,88 +1,62 @@
-// dataset_generator.cpp
-// CCP6214 Assignment - Dataset generator.
-//
-// Build:  g++ -O2 -std=c++17 "dataset_generator.cpp" -o dataset_generator
-// Run:    ./dataset_generator 1000        -> writes dataset_1000.csv
-//
-// Produces n rows of:  <unique random 10-digit integer>,<5 lowercase letters>
-//   - integers are UNIQUE, random, positive, in [1,000,000,000 .. 9,999,999,999]
-//   - elements are emitted in random order (no sorting)
-//
-// Seed: derived from the group leader's student ID 242UC244S9 using the
-// assignment's letter->digit table (U=1, C=3, S=9):
-//       2 4 2 U C 2 4 4 S 9  ->  2 4 2 1 3 2 4 4 9 9  ->  2421324499
-// The seed is set right after main() enters, per the assignment instruction.
+// *********************************************************
+// Program: dataset_generator.cpp
+// Course: CCP6214 Algorithm Design and Analysis
+// Lecture Class: TC2L
+// Tutorial Class: TT8L
+// Trimester: 2610
+// Member_1: 242UC244S9 | GOH WEI JING | EMAIL | PHONE
+// Member_2: 243UC247DJ | WONG KAI SHEN | EMAIL | PHONE
+// Member_3: 251UC2517Z | JAYAVARMAN THIYAGU | Jayavarman.thiyagu@student.mmu.edu.my | 0169441376
+// Member_4: ID | NAME | EMAIL | PHONE
+// *********************************************************
+// Task Distribution
+// Member_1: 
+// Member_2: HEAP
+// Member_3: DATA GENERATION
+// Member_4: 
+// *********************************************************
 
 #include <iostream>
 #include <fstream>
 #include <string>
 #include <random>
-#include <vector>          // raw contiguous storage only (no sorting/searching API used)
 
-// ----------------------------------------------------------------------------
-// Hand-built open-addressing hash set (linear probing).
-//
-// The assignment forbids any standard-library container that searches/sorts
-// internally (e.g. std::unordered_set). To guarantee that the generated keys
-// are unique we therefore implement our own hash set from scratch, backed only
-// by a plain array of slots. std::vector is used purely as raw memory.
-// ----------------------------------------------------------------------------
-class UniqueKeySet {
-public:
-    explicit UniqueKeySet(long long expected) {
-        // pick a power-of-two capacity at least 2x the expected element count
-        std::size_t cap = 16;
-        while (cap < static_cast<std::size_t>(expected) * 2 + 1) cap <<= 1;
-        slots_.assign(cap, EMPTY);
-        mask_ = cap - 1;
-    }
-
-    // returns true if 'key' was newly inserted, false if it was already present
-    bool insert(long long key) {
-        std::size_t i = hash(key) & mask_;
-        while (slots_[i] != EMPTY) {
-            if (slots_[i] == key) return false;   // already present
-            i = (i + 1) & mask_;                   // linear probe
-        }
-        slots_[i] = key;
-        return true;
-    }
-
-private:
-    static constexpr long long EMPTY = -1;        // keys are always positive
-
-    static std::size_t hash(long long key) {
-        // 64-bit fibonacci-style mix
-        unsigned long long x = static_cast<unsigned long long>(key);
-        x ^= x >> 33;
-        x *= 0xff51afd7ed558ccdULL;
-        x ^= x >> 33;
-        return static_cast<std::size_t>(x);
-    }
-
-    std::vector<long long> slots_;
-    std::size_t mask_;
-};
+using namespace std;
 
 int main(int argc, char** argv) {
-    // ---- Group-leader seed (student ID 242UC244S9) ----
-    std::mt19937_64 rng(2421324499);
+    // Seed derived from Group Leader ID (242UC244S9 -> 2421324499)
+    std::mt19937_64 rng(2421324499ULL);
 
+    // Retrieve dataset size from command line arguments
     long long n = (argc > 1) ? std::stoll(argv[1]) : 1000;
     if (n <= 0) {
         std::cerr << "Error: size must be a positive integer.\n";
         return 1;
     }
 
-    const long long LO = 1000000000LL;   // smallest 10-digit number
-    const long long HI = 9999999999LL;   // largest 10-digit number
-    if (n > (HI - LO + 1)) {
-        std::cerr << "Error: n exceeds the count of available unique 10-digit integers.\n";
-        return 1;
+    // Generate sequential unique 10-digit numbers
+    long long* numbers = new long long[n];
+    long long current = 1000000000LL; 
+    
+    // Dynamically scale the gap so numbers span the entire 9-billion range
+    long long maxGap = (8999999999LL / n); 
+    if (maxGap < 1) maxGap = 1; // Safety fallback
+    std::uniform_int_distribution<long long> stepDist(1, maxGap); 
+
+    for(long long i = 0; i < n; ++i) {
+        current += stepDist(rng);
+        numbers[i] = current;
     }
 
-    std::uniform_int_distribution<long long> keyDist(LO, HI);
-    std::uniform_int_distribution<int> letterDist(0, 25);
+    // Fisher-Yates shuffle to ensure random distribution of unique integers
+    for(long long i = n - 1; i > 0; --i) {
+        std::uniform_int_distribution<long long> indexDist(0, i);
+        long long j = indexDist(rng);
+        
+        long long temp = numbers[i];
+        numbers[i] = numbers[j];
+        numbers[j] = temp;
+    }
 
     std::string outputFile = "dataset_" + std::to_string(n) + ".csv";
     std::ofstream out(outputFile);
@@ -91,21 +65,19 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    UniqueKeySet seen(n);
+    // Append a 5-letter randomized lowercase string to each row
+    std::uniform_int_distribution<int> letterDist(0, 25);
 
-    for (long long i = 0; i < n; ++i) {
-        long long key;
-        do {
-            key = keyDist(rng);
-        } while (!seen.insert(key));   // re-draw on collision -> uniqueness
-
-        std::string s(5, 'a');
-        for (int j = 0; j < 5; ++j)
-            s[j] = static_cast<char>('a' + letterDist(rng));
-
-        out << key << ',' << s << '\n';
+    for(long long i = 0; i < n; ++i) {
+        std::string randomStr = "";
+        for(int c = 0; c < 5; ++c) {
+            randomStr += static_cast<char>('a' + letterDist(rng));
+        }
+        out << numbers[i] << "," << randomStr << "\n";
     }
+
     out.close();
+    delete[] numbers;
 
     std::cout << "Generated " << n << " unique rows -> " << outputFile << '\n';
     return 0;
