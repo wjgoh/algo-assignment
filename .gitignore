@@ -1,11 +1,16 @@
 # Ignore generated datasets and compiled binary, but keep the generator source
+.vscode
+CLAUDE.MD
+*.exe
+
 Dataset Generator/*.csv
 Dataset Generator/dataset_generator
-.vscode
-/CLAUDE.MD
 
+Radix Sort/*.csv
+Radix Sort/*.txt    
+
+Heap Sort/*.txt
 Heap Sort/*.csv
 
-*.exe
-radix-sort/*.csv
-radix-sort/*.txt
+HashTableSearch/*.csv
+HashTableSearch/*.txt
