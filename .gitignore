@@ -6,8 +6,8 @@ CLAUDE.MD
 Dataset Generator/*.csv
 Dataset Generator/dataset_generator
 
-Radix Sort/*.csv
-Radix Sort/*.txt    
+radix-sort/*.csv
+radix-sort/*.txt
 
 Heap Sort/*.txt
 Heap Sort/*.csv

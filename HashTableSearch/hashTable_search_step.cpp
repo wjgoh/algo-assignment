@@ -1,258 +1,261 @@
+// *******************
+// Program: hashTable_search_step.cpp
+// Course: CCP6214 Algorithm Design and Analysis
+// Lecture Class: TC2L
+// Tutorial Class: TT8L
+// Trimester: 2610
+// Member_1: 242UC244S9 | GOH WEI JING | goh.wei.jing@student.mmu.edu.my | 01110872022
+// Member_2: 243UC247DJ | WONG KAI SHEN | wong.kai.shen@student.mmu.edu.my | 0167129682
+// Member_3: 251UC2517Z | JAYAVARMAN THIYAGU | Jayavarman.thiyagu@student.mmu.edu.my | 0169441376
+// Member_4: ID | SAMIEON NGIAM TUN SHEN | SAMIEON.NGIAM.TUN@student.mmu.edu.my | 0169515810
+// *******************
+// Task Distribution
+// Member_1: RADIX SORT
+// Member_2: HEAP
+// Member_3: DATA GENERATION
+// Member_4: HASH TABLE
+// *******************
+//
+// Build:  g++ -O2 -std=c++17 hashTable_search_step.cpp -o hash_table_search_step
+// Run:    ./hash_table_search_step "../Dataset Generator/dataset_1000.csv" <target>
+//   e.g.  ./hash_table_search_step "../Dataset Generator/dataset_1000.csv" 2008864030
+//
+// This is the STEP-TRACE program required by the assignment. It builds the same
+// chaining hash table (each bucket is an AVL tree) used by the benchmark, then
+// searches for ONE target key and prints the path the search takes:
+//   1. the bucket the key hashes to, then
+//   2. every AVL node visited inside that bucket and which way it branches.
+//
+// Output file: dataset_<n>_hash_table_search_step_<target>.txt
+// Final line format (graded):
+//   found     ->  2008864030 = 2008864030/rdiea
+//   not found ->  -1 != 123456789
+//
+// The AVL tree is array-based (one pooled vector<Node>, 4-byte indices instead of
+// pointers) so this program can also build the table for the largest datasets
+// (e.g. 200,000,000 rows) on a 16 GB machine without being OOM-killed.
+//
+// Constraints honoured: no library search structure (hand-written hash table +
+// AVL). The step trace is descriptive output, so there is no timed region here.
+
 #include <iostream>
 #include <fstream>
-#include <sstream>
 #include <string>
 #include <vector>
-#include <chrono>
-#include <iomanip>
+#include <cstdint>
+#include <algorithm>
 
 using namespace std;
 
-// Location of the dataset_<n>.csv files, relative to where you run the program.
-static const string DATASET_DIR = "../Dataset Generator/";
+static const uint32_t NIL = 0xFFFFFFFFu;
 
-// The experiment sizes to run automatically
-static const vector<long long> DEFAULT_SIZES = {
-    1000, 10000, 100000, 500000, 1000000,
-    5000000, 10000000, 50000000, 100000000, 200000000
-};
-
-// ==========================================
-// DATA RECORD & AVL TREE (Collision Handling)
-// ==========================================
-struct Record {
+// Pooled AVL node (24 bytes): key(8)+left(4)+right(4)+value(5)+height(1).
+struct Node {
     long long key;
-    string str;
+    uint32_t  left;
+    uint32_t  right;
+    char      value[5];
+    uint8_t   height;
 };
 
-struct AVLNode {
-    Record data;
-    AVLNode* left;
-    AVLNode* right;
-    int height;
-    AVLNode(Record r) : data(r), left(nullptr), right(nullptr), height(1) {}
-};
-
-int getHeight(AVLNode* node) {
-    return node != nullptr ? node->height : 0;
-}
-
-int getBalanceFactor(AVLNode* node) {
-    return node != nullptr ? getHeight(node->left) - getHeight(node->right) : 0;
-}
-
-AVLNode* rotateRight(AVLNode* y) {
-    AVLNode* x = y->left;
-    AVLNode* T2 = x->right;
-    x->right = y;
-    y->left = T2;
-    y->height = 1 + max(getHeight(y->left), getHeight(y->right));
-    x->height = 1 + max(getHeight(x->left), getHeight(x->right));
-    return x;
-}
-
-AVLNode* rotateLeft(AVLNode* x) {
-    AVLNode* y = x->right;
-    AVLNode* T2 = y->left;
-    y->left = x;
-    x->right = T2;
-    x->height = 1 + max(getHeight(x->left), getHeight(x->right));
-    y->height = 1 + max(getHeight(y->left), getHeight(y->right));
-    return y;
-}
-
-AVLNode* insertAVLNode(AVLNode* node, Record r) {
-    if (node == nullptr) return new AVLNode(r);
-
-    if (r.key < node->data.key) node->left = insertAVLNode(node->left, r);
-    else if (r.key > node->data.key) node->right = insertAVLNode(node->right, r);
-    else return node; // Ignore duplicates
-
-    node->height = 1 + max(getHeight(node->left), getHeight(node->right));
-    int balance = getBalanceFactor(node);
-
-    if (balance > 1 && r.key < node->left->data.key) return rotateRight(node);
-    if (balance < -1 && r.key > node->right->data.key) return rotateLeft(node);
-    if (balance > 1 && r.key > node->left->data.key) {
-        node->left = rotateLeft(node->left);
-        return rotateRight(node);
-    }
-    if (balance < -1 && r.key < node->right->data.key) {
-        node->right = rotateRight(node->right);
-        return rotateLeft(node);
-    }
-    return node;
-}
-
-void destroyTree(AVLNode* node) {
-    if (node != nullptr) {
-        destroyTree(node->left);
-        destroyTree(node->right);
-        delete node;
-    }
-}
-
 // ==========================================
-// HASH TABLE OBJECT
+// HASH TABLE: chaining, each bucket an array-based AVL tree
 // ==========================================
-class HashTableLL {
+class HashTableArray {
 private:
-    AVLNode** table;
-    int tableSize;
+    vector<Node>&    pool;
+    vector<uint32_t> buckets;
+    long long        tableSize;
 
-    int hashFunction(long long key) {
-        int index = key % tableSize;
-        // Safety check to ensure negative keys don't cause out-of-bounds array access
-        return index < 0 ? index + tableSize : index;
+    int  h(uint32_t n)  { return n == NIL ? 0 : pool[n].height; }
+    int  bf(uint32_t n) { return n == NIL ? 0 : h(pool[n].left) - h(pool[n].right); }
+    void upd(uint32_t n){ pool[n].height = (uint8_t)(1 + max(h(pool[n].left), h(pool[n].right))); }
+
+    uint32_t rotateRight(uint32_t y) {
+        uint32_t x = pool[y].left, t = pool[x].right;
+        pool[x].right = y; pool[y].left = t;
+        upd(y); upd(x); return x;
+    }
+    uint32_t rotateLeft(uint32_t x) {
+        uint32_t y = pool[x].right, t = pool[y].left;
+        pool[y].left = x; pool[x].right = t;
+        upd(x); upd(y); return y;
+    }
+    uint32_t insertNode(uint32_t node, uint32_t z) {
+        if (node == NIL) return z;
+        if (pool[z].key < pool[node].key)      pool[node].left  = insertNode(pool[node].left, z);
+        else if (pool[z].key > pool[node].key) pool[node].right = insertNode(pool[node].right, z);
+        else return node;
+        upd(node);
+        int b = bf(node);
+        if (b > 1 && pool[z].key < pool[pool[node].left].key)  return rotateRight(node);
+        if (b < -1 && pool[z].key > pool[pool[node].right].key) return rotateLeft(node);
+        if (b > 1 && pool[z].key > pool[pool[node].left].key)  { pool[node].left  = rotateLeft(pool[node].left);   return rotateRight(node); }
+        if (b < -1 && pool[z].key < pool[pool[node].right].key){ pool[node].right = rotateRight(pool[node].right); return rotateLeft(node); }
+        return node;
     }
 
 public:
-    HashTableLL(int size) {
-        tableSize = size;
-        table = new AVLNode*[tableSize];
-        for (int i = 0; i < tableSize; ++i) table[i] = nullptr;
+    HashTableArray(vector<Node>& p, long long size)
+        : pool(p), buckets(size, NIL), tableSize(size) {}
+
+    long long size() const { return tableSize; }
+
+    long long hashFunction(long long key) {
+        long long index = key % tableSize;
+        return index < 0 ? index + tableSize : index;
     }
 
-    ~HashTableLL() {
-        for (int i = 0; i < tableSize; ++i) destroyTree(table[i]);
-        delete[] table;
+    void insert(uint32_t z) {
+        long long idx = hashFunction(pool[z].key);
+        buckets[idx] = insertNode(buckets[idx], z);
     }
 
-    void insert(Record r) {
-        int index = hashFunction(r.key);
-        table[index] = insertAVLNode(table[index], r);
-    }
+    // Search for `target`, appending a human-readable line for every step.
+    // On a hit, copies the 5-char value into `foundValue`.
+    bool searchTrace(long long target, string& foundValue, vector<string>& trace) {
+        long long idx = hashFunction(target);
+        trace.push_back("Hash index: " + to_string(target) + " % " +
+                        to_string(tableSize) + " = " + to_string(idx));
 
-    bool searchSilent(long long targetKey) {
-        int index = hashFunction(targetKey);
-        AVLNode* current = table[index];
-        while (current != nullptr) {
-            if (current->data.key == targetKey) return true;
-            if (targetKey < current->data.key) current = current->left;
-            else current = current->right;
+        uint32_t cur = buckets[idx];
+        if (cur == NIL) {
+            trace.push_back("Bucket " + to_string(idx) + " is empty -> not found");
+            return false;
         }
+
+        int step = 1;
+        while (cur != NIL) {
+            long long k = pool[cur].key;
+            if (target == k) {
+                trace.push_back("Step " + to_string(step) + ": compare " +
+                                to_string(target) + " == " + to_string(k) + " -> MATCH");
+                foundValue.assign(pool[cur].value, 5);
+                return true;
+            } else if (target < k) {
+                trace.push_back("Step " + to_string(step) + ": compare " +
+                                to_string(target) + " < " + to_string(k) + " -> go left");
+                cur = pool[cur].left;
+            } else {
+                trace.push_back("Step " + to_string(step) + ": compare " +
+                                to_string(target) + " > " + to_string(k) + " -> go right");
+                cur = pool[cur].right;
+            }
+            ++step;
+        }
+        trace.push_back("Reached empty subtree -> not found");
         return false;
     }
 };
 
-// ==========================================
-// BENCHMARK RUNNER LOGIC
-// ==========================================
-struct Result {
-    long long n;
-    long long rows;
-    double bestTime;
-    double avgTime;
-    double worstTime;
-    bool ok;
-};
-
-static Result runOne(long long n) {
-    Result r{n, 0, 0.0, 0.0, 0.0, false};
-    string inputFile = DATASET_DIR + "dataset_" + to_string(n) + ".csv";
-
-    // ---- Read Data (NOT timed) ----
-    ifstream in(inputFile);
-    if (!in) {
-        cerr << "  [skip] cannot open " << inputFile << '\n';
-        return r;
-    }
-
-    vector<Record> data;
-    string line;
-    while (getline(in, line)) {
-        if (line.empty()) continue;
-        stringstream ss(line);
-        string keyStr, str;
-        if (!getline(ss, keyStr, ',')) continue;
-        getline(ss, str);
-        data.push_back({stoll(keyStr), str});
-    }
-    in.close();
-    r.rows = static_cast<long long>(data.size());
-
-    // ---- Build Hash Table (NOT timed) ----
-    HashTableLL ht(r.rows);
-    for (const auto& rec : data) {
-        ht.insert(rec);
-    }
-
-    // ---- Perform Searches (TIMED region) ----
-    long long size = r.rows;
-    long long bestTarget = data[0].key;         // Best Case: Root of an AVL tree
-    long long worstTarget = 123456789;          // Worst Case: Missing target (Positive so modulo doesn't crash)
-
-    // 1. BEST CASE (Search N times)
-    auto startBest = chrono::high_resolution_clock::now();
-    for (int i = 0; i < size; ++i) ht.searchSilent(bestTarget);
-    auto endBest = chrono::high_resolution_clock::now();
-    r.bestTime = chrono::duration<double>(endBest - startBest).count();
-
-    // 2. AVERAGE CASE (Search N random existing targets)
-    auto startAvg = chrono::high_resolution_clock::now();
-    for (int i = 0; i < size; ++i) ht.searchSilent(data[i].key);
-    auto endAvg = chrono::high_resolution_clock::now();
-    r.avgTime = chrono::duration<double>(endAvg - startAvg).count();
-
-    // 3. WORST CASE (Search N missing targets)
-    auto startWorst = chrono::high_resolution_clock::now();
-    for (int i = 0; i < size; ++i) ht.searchSilent(worstTarget);
-    auto endWorst = chrono::high_resolution_clock::now();
-    r.worstTime = chrono::duration<double>(endWorst - startWorst).count();
-    r.ok = true;
-
-    // ---- Write Output File (NOT timed) ----
-    string outputFile = "hash_table_search_dataset_" + to_string(r.rows) + ".txt";
-    ofstream out(outputFile);
-    if (out) {
-        out << "Best case time: " << r.bestTime << " seconds\n";
-        out << "Average case time: " << r.avgTime << " seconds\n";
-        out << "Worst case time: " << r.worstTime << " seconds\n";
-        out.close();
-    }
-
-    cout << "  Searched " << r.rows << " rows -> " << outputFile << '\n';
-    return r;
+// Pull n out of a filename like ".../dataset_1000.csv" -> "1000".
+string extractN(const string& filename) {
+    size_t start = filename.rfind('_');
+    size_t end = filename.rfind(".csv");
+    if (start == string::npos || end == string::npos || end < start) return "0";
+    return filename.substr(start + 1, end - start - 1);
 }
 
-static void printTable(ostream& os, const vector<Result>& results) {
-    os << '\n';
-    os << "+----------------+----------------+----------------+----------------+----------------+\n";
-    os << "|  Dataset size  |    Elements    |  Best (secs)   |  Avg (secs)    |  Worst (secs)  |\n";
-    os << "+----------------+----------------+----------------+----------------+----------------+\n";
-    for (const auto& r : results) {
-        os << "| " << setw(14) << r.n << " | ";
-        if (r.ok) {
-            os << setw(14) << r.rows << " | "
-               << setw(14) << fixed << setprecision(6) << r.bestTime << " | "
-               << setw(14) << fixed << setprecision(6) << r.avgTime << " | "
-               << setw(14) << fixed << setprecision(6) << r.worstTime << " |\n";
-        } else {
-            os << setw(14) << "-" << " | "
-               << setw(14) << "MISSING" << " | "
-               << setw(14) << "MISSING" << " | "
-               << setw(14) << "MISSING" << " |\n";
-        }
-    }
-    os << "+----------------+----------------+----------------+----------------+----------------+\n";
+long long nextPrime(long long n) {
+    if (n < 2) return 2;
+    auto isPrime = [](long long x) {
+        if (x < 2) return false;
+        for (long long d = 2; d * d <= x; ++d)
+            if (x % d == 0) return false;
+        return true;
+    };
+    while (!isPrime(n)) ++n;
+    return n;
 }
 
 int main(int argc, char** argv) {
-    vector<long long> sizes;
-    if (argc > 1) {
-        for (int i = 1; i < argc; ++i) sizes.push_back(stoll(argv[i]));
-    } else {
-        sizes = DEFAULT_SIZES;
+    if (argc < 3) {
+        cerr << "Usage: " << argv[0] << " <dataset_n.csv> <target_key>\n";
+        cerr << "  e.g. " << argv[0]
+             << " \"../Dataset Generator/dataset_1000.csv\" 2008864030\n";
+        return 1;
+    }
+    string filename = argv[1];
+    long long target = stoll(argv[2]);
+
+    // ---- Read input ----
+    ios::sync_with_stdio(false);
+    ifstream inFile(filename);
+    if (!inFile.is_open()) {
+        cerr << "Error: cannot open input file '" << filename << "'\n";
+        return 1;
     }
 
-    vector<Result> results;
-    for (long long n : sizes) {
-        cout << "Running dataset_" << n << ".csv ...\n";
-        results.push_back(runOne(n));
+    vector<Node> pool;
+    {
+        string nStr = extractN(filename);
+        try { long long hint = stoll(nStr); if (hint > 0) pool.reserve((size_t)hint); }
+        catch (...) {}
     }
 
-    // Print summary table to console
-    printTable(cout, results);
+    string line;
+    while (getline(inFile, line)) {
+        if (line.empty()) continue;
+        long long key = 0;
+        size_t i = 0, len = line.size();
+        while (i < len && line[i] != ',') { key = key * 10 + (line[i] - '0'); ++i; }
+        Node node;
+        node.key = key; node.left = NIL; node.right = NIL; node.height = 1;
+        size_t v = i + 1;
+        for (int k = 0; k < 5; ++k) node.value[k] = (v + k < len) ? line[v + k] : '\0';
+        pool.push_back(node);
+    }
+    inFile.close();
+
+    long long size = (long long)pool.size();
+    if (size == 0) {
+        cerr << "Error: no records read from '" << filename << "'\n";
+        return 1;
+    }
+
+    // Build the table (same sizing rule as the benchmark for a representative path).
+    HashTableArray ht(pool, nextPrime(size * 2 + 1));
+    for (long long i = 0; i < size; ++i) ht.insert((uint32_t)i);
+
+    // ---- Trace one search ----
+    vector<string> trace;
+    string foundValue;
+    bool found = ht.searchTrace(target, foundValue, trace);
+
+    // Final, graded result line.
+    string resultLine;
+    if (found)
+        resultLine = to_string(target) + " = " + to_string(target) + "/" + foundValue;
+    else
+        resultLine = "-1 != " + to_string(target);
+
+    // ---- Write output file ----
+    string n = extractN(filename);
+    if (n == "0") n = to_string(size);
+    string outFilename = "dataset_" + n + "_hash_table_search_step_" +
+                         to_string(target) + ".txt";
+
+    ofstream outFile(outFilename);
+    if (!outFile.is_open()) {
+        cerr << "Error: cannot write output file '" << outFilename << "'\n";
+        return 1;
+    }
+    outFile << "Dataset: " << filename << "  (" << size << " records)\n";
+    outFile << "Table size (prime): " << ht.size() << "\n";
+    outFile << "Search target: " << target << "\n";
+    outFile << "--- search path ---\n";
+    for (const string& s : trace) outFile << s << "\n";
+    outFile << "--- result ---\n";
+    outFile << resultLine << "\n";
+    outFile.close();
+
+    // ---- Console (for the report screenshots) ----
+    cout << "Search target: " << target << "\n";
+    cout << "--- search path ---\n";
+    for (const string& s : trace) cout << s << "\n";
+    cout << "--- result ---\n";
+    cout << resultLine << "\n";
+    cout << "Trace written to: " << outFilename << "\n";
 
     return 0;
 }
