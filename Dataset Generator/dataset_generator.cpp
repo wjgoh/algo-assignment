@@ -1,17 +1,21 @@
-// dataset_generator.cpp
-// CCP6214 Assignment - Dataset generator.
-//
-// Build:  g++ -O2 -std=c++17 "dataset_generator.cpp" -o dataset_generator
-// Run:    ./dataset_generator 1000        -> writes dataset_1000.csv
-//
-// Produces n rows of:  <unique random 10-digit integer>,<5 lowercase letters>
-//   - integers are UNIQUE, random, positive, in [1,000,000,000 .. 9,999,999,999]
-//   - elements are emitted in random order (no sorting)
-//
-// Seed: derived from the group leader's student ID 242UC244S9 using the
-// assignment's letter->digit table (U=1, C=3, S=9):
-//       2 4 2 U C 2 4 4 S 9  ->  2 4 2 1 3 2 4 4 9 9  ->  2421324499
-// The seed is set right after main() enters, per the assignment instruction.
+// *******************
+// Program: dataset_generator.cpp
+// Course: CCP6214 Algorithm Design and Analysis
+// Lecture Class: TC2L
+// Tutorial Class: TT8L
+// Trimester: 2610
+// Member_1: 242UC244S9 | GOH WEI JING | goh.wei.jing@student.mmu.edu.my | 01110872022
+// Member_2: 243UC247DJ | WONG KAI SHEN | wong.kai.shen@student.mmu.edu.my | 0167129682
+// Member_3: 251UC2517Z | JAYAVARMAN THIYAGU | Jayavarman.thiyagu@student.mmu.edu.my | 0169441376
+// Member_4: ID | SAMIEON NGIAM TUN SHEN | SAMIEON.NGIAM.TUN@student.mmu.edu.my | 0169515810
+// *******************
+// Task Distribution
+// Member_1: RADIX SORT
+// Member_2: HEAP
+// Member_3: DATA GENERATION
+// Member_4: HASH TABLE
+// *******************
+
 
 #include <iostream>
 #include <fstream>
