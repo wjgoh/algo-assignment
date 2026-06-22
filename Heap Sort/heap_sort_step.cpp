@@ -1,4 +1,22 @@
-// heap_sort_step.cpp
+// ***
+// Program: hashTable_search_array.cpp
+// Course: CCP6214 Algorithm Design and Analysis
+// Lecture Class: TC2L
+// Tutorial Class: TT8L
+// Trimester: 2610
+// Member_1: 242UC244S9 | GOH WEI JING | goh.wei.jing@student.mmu.edu.my | 01110872022
+// Member_2: 243UC247DJ | WONG KAI SHEN | wong.kai.shen@student.mmu.edu.my | 0167129682
+// Member_3: 251UC2517Z | JAYAVARMAN THIYAGU | Jayavarman.thiyagu@student.mmu.edu.my | 0169441376
+// Member_4: ID | SAMIEON NGIAM TUN SHEN | SAMIEON.NGIAM.TUN@student.mmu.edu.my | 0169515810
+// ***
+// Task Distribution
+// Member_1: RADIX SORT
+// Member_2: HEAP
+// Member_3: DATA GENERATION
+// Member_4: HASH TABLE
+// ***
+// 
+// // heap_sort_step.cpp
 // CCP6214 Assignment - Heap Sort step tracer (using maxheap).
 //
 // Build:  g++ -O2 -std=c++17 "heap_sort_step.cpp" -o heap_sort_step
