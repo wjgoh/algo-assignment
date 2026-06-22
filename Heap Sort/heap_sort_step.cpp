@@ -1,5 +1,5 @@
 // ***
-// Program: hashTable_search_array.cpp
+// Program: heap_sort_step.cpp
 // Course: CCP6214 Algorithm Design and Analysis
 // Lecture Class: TC2L
 // Tutorial Class: TT8L
