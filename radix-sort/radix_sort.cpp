@@ -1,5 +1,5 @@
 // *******************
-// Program: dataset_generator.cpp
+// Program: radix_sort.cpp
 // Course: CCP6214 Algorithm Design and Analysis
 // Lecture Class: TC2L
 // Tutorial Class: TT8L
@@ -98,7 +98,7 @@ string extractN(const string& filename) {
 int main(int argc, char** argv) {
 
     // Pass the dataset path as argv[1]; falls back to the default below.
-    string datasetFile = (argc > 1) ? argv[1] : "../Dataset Generator/dataset_1000.csv";
+    string datasetFile = (argc > 1) ? argv[1] : "dataset_1000.csv";
  
     // ----------------------------------------------------------------
  

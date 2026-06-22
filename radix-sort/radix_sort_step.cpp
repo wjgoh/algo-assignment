@@ -1,5 +1,5 @@
 // *******************
-// Program: dataset_generator.cpp
+// Program: radix_sort_step.cpp
 // Course: CCP6214 Algorithm Design and Analysis
 // Lecture Class: TC2L
 // Tutorial Class: TT8L
@@ -115,11 +115,12 @@ string extractN(const string& filename) {
     return filename.substr(start + 1, end - start - 1);
 }
  
-int main() {
- 
-    // string datasetFile = "dataset_1000.csv"; int startRow = 1; int endRow = 7;
-    // string datasetFile = "dataset_1000.csv"; int startRow = 1; int endRow = 20;
-    string datasetFile = "../Dataset Generator/dataset_1000.csv"; int startRow = 1; int endRow = 7;
+int main(int argc, char** argv) {
+    if (argc < 2) {
+        cerr << "Usage: " << argv[0] << " <dataset_n.csv>" << endl;
+        return 1;
+    }
+    string datasetFile = argv[1]; int startRow = 1; int endRow = 7;
  
     // ----------------------------------------------------------------
  
