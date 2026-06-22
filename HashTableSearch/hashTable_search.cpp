@@ -216,139 +216,116 @@ long long nextPrime(long long n) {
     return n;
 }
 
-int main() {
-    string userInput;
+int main(int argc, char** argv) {
+    // Pass the dataset path as argv[1]; falls back to the default below.
+    string filename = (argc > 1) ? argv[1] : "dataset_1000.csv";
 
-    // Outer loop to keep the program running until the user types "exit"
-    while (true) {
-        cout << "\n======================================================\n";
-        cout << "Enter the dataset size you want to test (or type 'exit'): ";
-        cin >> userInput;
-
-        // 1. Check for Exit command
-        if (userInput == "exit" || userInput == "Exit" || userInput == "EXIT") {
-            cout << "Exiting program. Goodbye!\n";
-            break;
-        }
-
-        // 2. Parse the number
-        long long requestedSize = 0;
-        try {
-            requestedSize = stoll(userInput);
-        } catch (...) {
-            cout << "Error: Invalid input. Please enter a valid number or 'exit'.\n";
-            continue; // Go back to the start of the loop
-        }
-
-        string filename = "../Dataset Generator/dataset_" + to_string(requestedSize) + ".csv";
-
-        // 3. Check if file exists
-        ifstream inFile(filename);
-        if (!inFile.is_open()) {
-            cout << "Error: Cannot find '" << filename << "'.\n";
-            cout << "Please ensure the file is generated in the Dataset Generator folder.\n";
-            continue; // Go back to the start of the loop
-        }
-        cout << "Success: Found '" << filename << "'! Loading data...\n";
-
-        // ---- Read input (NOT timed) ----
-        ios::sync_with_stdio(false);
-        vector<Node> pool;
-
-        if (requestedSize > 0) {
-            pool.reserve((size_t)requestedSize); // Reserve memory upfront
-        }
-
-        string line;
-        while (getline(inFile, line)) {
-            if (line.empty()) continue;
-
-            long long key = 0;
-            size_t i = 0;
-            size_t len = line.size();
-            while (i < len && line[i] != ',') {
-                key = key * 10 + (line[i] - '0');
-                ++i;
-            }
-
-            Node node;
-            node.key = key;
-            node.left = NIL;
-            node.right = NIL;
-            node.height = 1;
-
-            size_t v = i + 1;
-            for (int k = 0; k < 5; ++k)
-                node.value[k] = (v + k < len) ? line[v + k] : '\0';
-
-            pool.push_back(node);
-        }
-        inFile.close();
-
-        long long size = static_cast<long long>(pool.size());
-        if (size == 0) {
-            cout << "Error: no records read from '" << filename << "'\n";
-            continue;
-        }
-
-        // ---- Build the hash table ----
-        HashTableArray ht(pool, nextPrime(size * 2 + 1));
-        for (long long i = 0; i < size; ++i) {
-            ht.insert((uint32_t)i);
-        }
-
-        cout << "Loaded " << size << " records into the hash table (array-based AVL)." << endl;
-
-        // ---- Prepare search targets ----
-        vector<long long> bestTargets;
-        vector<long long> worstTargets;
-        ht.getTargets(pool, bestTargets, worstTargets);
-
-        volatile bool sink = false;
-
-        // ---- BEST CASE ----
-        auto startBest = chrono::high_resolution_clock::now();
-        for (long long i = 0; i < size; ++i) sink ^= ht.searchSilent(bestTargets[i]);
-        auto endBest = chrono::high_resolution_clock::now();
-        double diffBest = chrono::duration<double>(endBest - startBest).count();
-
-        // ---- AVERAGE CASE ----
-        auto startAvg = chrono::high_resolution_clock::now();
-        for (long long i = 0; i < size; ++i) sink ^= ht.searchSilent(pool[i].key);
-        auto endAvg = chrono::high_resolution_clock::now();
-        double diffAvg = chrono::duration<double>(endAvg - startAvg).count();
-
-        // ---- WORST CASE ----
-        auto startWorst = chrono::high_resolution_clock::now();
-        for (long long i = 0; i < size; ++i) sink ^= ht.searchSilent(worstTargets[i]);
-        auto endWorst = chrono::high_resolution_clock::now();
-        double diffWorst = chrono::duration<double>(endWorst - startWorst).count();
-
-        (void)sink;
-
-        // ---- Write output ----
-        string n = extractN(filename);
-        if (n == "0") n = to_string(size);
-        string outFilename = "hash_table_search_dataset_" + n + ".txt";
-
-        ofstream outFile(outFilename);
-        if (outFile.is_open()) {
-            outFile << "Number of searches per case: " << size << "\n";
-            outFile << "Best case time: " << diffBest << " seconds\n";
-            outFile << "Average case time: " << diffAvg << " seconds\n";
-            outFile << "Worst case time: " << diffWorst << " seconds\n";
-            outFile.close();
-        }
-
-        // ---- Console Results ----
-        cout << "\n--- BENCHMARK RESULTS (" << size << " searches) ---" << endl;
-        cout << "Best case time   : " << diffBest << " seconds" << endl;
-        cout << "Average case time: " << diffAvg << " seconds" << endl;
-        cout << "Worst case time  : " << diffWorst << " seconds" << endl;
-        cout << "Results written to: " << outFilename << endl;
-
-        // The loop will now automatically restart!
+    // Check if file exists
+    ifstream inFile(filename);
+    if (!inFile.is_open()) {
+        cerr << "Error: Cannot find '" << filename << "'.\n";
+        return 1;
     }
+    cout << "Success: Found '" << filename << "'! Loading data...\n";
+
+    // ---- Read input (NOT timed) ----
+    ios::sync_with_stdio(false);
+    vector<Node> pool;
+
+    // Try to guess size from filename to reserve memory upfront
+    string nStr = extractN(filename);
+    try {
+        long long hint = stoll(nStr);
+        if (hint > 0) pool.reserve((size_t)hint);
+    } catch (...) {}
+
+    string line;
+    while (getline(inFile, line)) {
+        if (line.empty()) continue;
+
+        long long key = 0;
+        size_t i = 0;
+        size_t len = line.size();
+        while (i < len && line[i] != ',') {
+            key = key * 10 + (line[i] - '0');
+            ++i;
+        }
+
+        Node node;
+        node.key = key;
+        node.left = NIL;
+        node.right = NIL;
+        node.height = 1;
+
+        size_t v = i + 1;
+        for (int k = 0; k < 5; ++k)
+            node.value[k] = (v + k < len) ? line[v + k] : '\0';
+
+        pool.push_back(node);
+    }
+    inFile.close();
+
+    long long size = static_cast<long long>(pool.size());
+    if (size == 0) {
+        cerr << "Error: no records read from '" << filename << "'\n";
+        return 1;
+    }
+
+    // ---- Build the hash table ----
+    HashTableArray ht(pool, nextPrime(size * 2 + 1));
+    for (long long i = 0; i < size; ++i) {
+        ht.insert((uint32_t)i);
+    }
+
+    cout << "Loaded " << size << " records into the hash table (array-based AVL)." << endl;
+
+    // ---- Prepare search targets ----
+    vector<long long> bestTargets;
+    vector<long long> worstTargets;
+    ht.getTargets(pool, bestTargets, worstTargets);
+
+    volatile bool sink = false;
+
+    // ---- BEST CASE ----
+    auto startBest = chrono::high_resolution_clock::now();
+    for (long long i = 0; i < size; ++i) sink ^= ht.searchSilent(bestTargets[i]);
+    auto endBest = chrono::high_resolution_clock::now();
+    double diffBest = chrono::duration<double>(endBest - startBest).count();
+
+    // ---- AVERAGE CASE ----
+    auto startAvg = chrono::high_resolution_clock::now();
+    for (long long i = 0; i < size; ++i) sink ^= ht.searchSilent(pool[i].key);
+    auto endAvg = chrono::high_resolution_clock::now();
+    double diffAvg = chrono::duration<double>(endAvg - startAvg).count();
+
+    // ---- WORST CASE ----
+    auto startWorst = chrono::high_resolution_clock::now();
+    for (long long i = 0; i < size; ++i) sink ^= ht.searchSilent(worstTargets[i]);
+    auto endWorst = chrono::high_resolution_clock::now();
+    double diffWorst = chrono::duration<double>(endWorst - startWorst).count();
+
+    (void)sink;
+
+    // ---- Write output ----
+    string n = extractN(filename);
+    if (n == "0") n = to_string(size);
+    string outFilename = "hash_table_search_dataset_" + n + ".txt";
+
+    ofstream outFile(outFilename);
+    if (outFile.is_open()) {
+        outFile << "Number of searches per case: " << size << "\n";
+        outFile << "Best case time: " << diffBest << " seconds\n";
+        outFile << "Average case time: " << diffAvg << " seconds\n";
+        outFile << "Worst case time: " << diffWorst << " seconds\n";
+        outFile.close();
+    }
+
+    // ---- Console Results ----
+    cout << "\n--- BENCHMARK RESULTS (" << size << " searches) ---" << endl;
+    cout << "Best case time   : " << diffBest << " seconds" << endl;
+    cout << "Average case time: " << diffAvg << " seconds" << endl;
+    cout << "Worst case time  : " << diffWorst << " seconds" << endl;
+    cout << "Results written to: " << outFilename << endl;
 
     return 0;
 }
